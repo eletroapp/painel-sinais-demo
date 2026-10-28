@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel de Sinais & Monitoramento Educacional</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Painel de Monitoramento & Sinais</h1>
+            <p class="subtitle">Ambiente Educacional e Simulado (Conta Demo)</p>
+        </header>
+
+        <!-- Tabela de Sinais Ativos -->
+        <section class="panel-section">
+            <h2>Sinais Ativos / Histórico Recente</h2>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Horário</th>
+                            <th>Ativo</th>
+                            <th>Ação</th>
+                            <th>Preço Entrada</th>
+                            <th>Take Profit (TP)</th>
+                            <th>Stop Loss (SL)</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sinais-tabela">
+                        <tr>
+                            <td colspan="7" class="loading">Aguardando novos sinais da conta demo...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Área de Logs / Terminal do Robô (Visual Profissional) -->
+        <section class="panel-section">
+            <h2>Terminal / Log de Execução ao Vivo</h2>
+            <div id="terminal-log" class="terminal-box">
+                <p class="log-item">[Sistema] Conectado ao painel educacional...</p>
+                <p class="log-item">[Robô] Aguardando eventos do MetaTrader 5...</p>
+            </div>
+        </section>
+
+        <!-- Termo de Uso e Isenção (Disclaimer) -->
+        <footer class="disclaimer-box">
+            <h3>Aviso Legal e Termos Educacionais</h3>
+            <p><strong>1. Natureza Exclusivamente Educacional:</strong> Todos os sinais e dados exibidos neste painel são gerados a partir de uma CONTA DE DEMONSTRAÇÃO em ambiente simulado e possuem caráter estritamente didático.</p>
+            <p><strong>2. Isenção de Risco:</strong> O mercado financeiro envolve riscos. O desempenho simulado não garante resultados futuros em contas reais. Este projeto não constitui consultoria financeira ou recomendação de investimentos.</p>
+            <p><strong>3. Contribuição:</strong> O valor de colaboração destina-se unicamente à manutenção da infraestrutura tecnológica e servidores.</p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
