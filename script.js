@@ -2,10 +2,12 @@
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzRlZOY3oAAHqZ43owpuz06KD_5lvZhJOMI_oabSZcXVq0Lqn4HBGA50VywArgPa_1N/exec";
 
 const MAX_LINHAS = 50;       // quantas linhas mostrar na tabela (as mais recentes)
-let totalVisto = null;       // quantas linhas da planilha o log ja registrou
+const MAX_LOG = 200;         // quantas linhas manter no log do terminal
+let ultimaLinha = null;      // maior numero de linha da planilha ja registrado no log
+let carregando = false;      // evita duas buscas ao mesmo tempo
 
 // Tira acento e deixa minusculo: "Açao" -> "acao", "Preço" -> "preco"
-const semAcento = s => String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const semAcento = s => String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
 // Normaliza os nomes das colunas para o painel funcionar com ou sem acento no cabecalho
 // ("Capital Inicial", "capital_inicial" e "capital" viram "capitalinicial")
@@ -25,14 +27,23 @@ const esc = v => String(v == null ? "" : v).replace(/[&<>"']/g, c => (
 ));
 
 // Numero em formato brasileiro; vazio, "-" ou zero viram "-"
+// Aceita numero, "4300.50", "4300,50" e "4.300,50"
 function fmtNum(v) {
     if (v === "" || v === null || v === undefined || v === "-") return "-";
-    const n = (typeof v === "number") ? v : Number(String(v).replace(",", "."));
+    let n;
+    if (typeof v === "number") {
+        n = v;
+    } else {
+        let s = String(v).trim();
+        if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+        n = Number(s);
+    }
     if (!isFinite(n) || n <= 0) return "-";
     return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-// Horario: se o Google Sheets converteu em data (ISO), mostra no horario de Fortaleza
+// Horario: o script da planilha ja manda "dd/MM/yyyy HH:mm:ss" (mostrado como veio).
+// Se vier em formato ISO (linhas antigas), mostra no horario de Fortaleza.
 function fmtHora(v) {
     if (v === "" || v === null || v === undefined) return "-";
     const s = String(v);
@@ -51,6 +62,14 @@ function corAcao(acao) {
     return "#fbbf24";
 }
 
+// Cor do selo de status: [fundo, texto]
+function corStatus(status) {
+    const s = semAcento(status);
+    if (s.startsWith("encerrada")) return ["#374151", "#d1d5db"];                    // operacao fechada
+    if (s.includes("bloqueado") || s.startsWith("sinal de")) return ["#78350f", "#fbbf24"]; // sem entrada
+    return ["#065f46", "#34d399"];                                                   // ativo / trailing
+}
+
 // Origem do sinal: linhas antigas (sem origem) eram todas do EA
 function origemDe(s) {
     const o = String(s.origem || "").trim();
@@ -64,13 +83,22 @@ function corOrigem(o) {
     return "#9ca3af";
 }
 
-async function carregarSinais() {
-    try {
-        const resposta = await fetch(SCRIPT_URL);
-        const bruto = await resposta.json();
+// Numero da linha na planilha (enviado pelo script); 0 se nao vier
+const linhaDe = s => Number(s.linhaplanilha) || 0;
 
-        const tabela = document.getElementById("sinais-tabela");
-        const terminal = document.getElementById("terminal-log");
+async function carregarSinais() {
+    if (carregando) return;
+    carregando = true;
+
+    const tabela = document.getElementById("sinais-tabela");
+    const terminal = document.getElementById("terminal-log");
+    if (!tabela) { carregando = false; return; }
+
+    try {
+        const resposta = await fetch(SCRIPT_URL, { cache: "no-store" });
+        if (!resposta.ok) throw new Error("HTTP " + resposta.status);
+        const bruto = await resposta.json();
+        if (bruto && !Array.isArray(bruto) && bruto.erro) throw new Error(bruto.erro);
 
         if (!Array.isArray(bruto) || bruto.length === 0) {
             tabela.innerHTML = `<tr><td colspan="9" class="loading">Aguardando novos sinais da conta demo...</td></tr>`;
@@ -82,6 +110,7 @@ async function carregarSinais() {
         // Tabela: os mais recentes primeiro
         tabela.innerHTML = dados.slice(-MAX_LINHAS).reverse().map(s => {
             const origem = origemDe(s);
+            const [bgStatus, fgStatus] = corStatus(s.status);
             return `
             <tr>
                 <td>${esc(fmtHora(s.horario))}</td>
@@ -91,27 +120,40 @@ async function carregarSinais() {
                 <td>${esc(fmtNum(s.preco))}</td>
                 <td>${esc(fmtNum(s.tp))}</td>
                 <td>${esc(fmtNum(s.sl))}</td>
-                <td><span style="background: #065f46; color: #34d399; padding: 3px 8px; border-radius: 4px; font-size: 0.8rem;">${esc(s.status || "Ativo")}</span></td>
+                <td><span style="background: ${bgStatus}; color: ${fgStatus}; padding: 3px 8px; border-radius: 4px; font-size: 0.8rem;">${esc(s.status || "Ativo")}</span></td>
                 <td>${esc(fmtNum(s.capitalinicial))}</td>
             </tr>`;
         }).join("");
 
-        // Log: so acrescenta linhas NOVAS da planilha (antes repetia a ultima a cada 10 s)
-        let novos = [];
-        if (totalVisto === null) novos = dados.slice(-5);
-        else if (dados.length > totalVisto) novos = dados.slice(totalVisto);
-        totalVisto = dados.length;
+        // Log: so acrescenta linhas NOVAS da planilha.
+        // Usa o numero da linha (nao a quantidade), pois o script envia so as ultimas linhas.
+        if (terminal) {
+            let novos;
+            if (ultimaLinha === null) novos = dados.slice(-5);
+            else novos = dados.filter(s => linhaDe(s) > ultimaLinha);
 
-        novos.forEach(s => {
-            const p = document.createElement("p");
-            p.className = "log-item";
-            p.textContent = `[${origemDe(s)}] ${fmtHora(s.horario)} | ${s.acao || "-"} ${s.ativo || ""} a ${fmtNum(s.preco)} | ${s.status || "-"}`;
-            terminal.appendChild(p);
-        });
-        if (novos.length) terminal.scrollTop = terminal.scrollHeight;
+            novos.forEach(s => {
+                const p = document.createElement("p");
+                p.className = "log-item";
+                p.textContent = `[${origemDe(s)}] ${fmtHora(s.horario)} | ${s.acao || "-"} ${s.ativo || ""} a ${fmtNum(s.preco)} | ${s.status || "-"}`;
+                terminal.appendChild(p);
+            });
+
+            while (terminal.children.length > MAX_LOG) terminal.removeChild(terminal.firstChild);
+            if (novos.length) terminal.scrollTop = terminal.scrollHeight;
+        }
+
+        const maior = Math.max(0, ...dados.map(linhaDe));
+        ultimaLinha = Math.max(ultimaLinha || 0, maior);
 
     } catch (erro) {
         console.error("Erro ao carregar os dados:", erro);
+        // so avisa na tela se ainda nao havia nada carregado
+        if (ultimaLinha === null) {
+            tabela.innerHTML = `<tr><td colspan="9" class="loading">Nao foi possivel carregar os dados. Tentando novamente...</td></tr>`;
+        }
+    } finally {
+        carregando = false;
     }
 }
 
